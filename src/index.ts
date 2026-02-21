@@ -217,11 +217,71 @@ function showStats() {
   }
 }
 
+async function editBook() {
+  const store = loadStore();
+
+  if (store.books.length === 0) {
+    console.log(chalk.gray('\n  No books yet. Add one with: readr add\n'));
+    return;
+  }
+
+  header();
+  console.log(chalk.bold('  Your books:\n'));
+  store.books.forEach((b, i) => {
+    console.log(`  ${chalk.bold.cyan(i + 1 + '.')} ${b.title} ${chalk.gray(`— page ${b.currentPage}/${b.totalPages}`)}`);
+  });
+
+  const choiceStr = await prompt(chalk.cyan('\n  Pick a book to edit (number): '));
+  const choice = parseInt(choiceStr) - 1;
+  const book = store.books[choice];
+
+  if (!book) {
+    console.log(chalk.red('  ✗ Invalid choice.'));
+    process.exit(1);
+  }
+
+  console.log(chalk.gray('\n  Press Enter to keep the current value.\n'));
+
+  const title = await prompt(chalk.cyan(`  Title (${book.title}): `));
+  const author = await prompt(chalk.cyan(`  Author (${book.author}): `));
+  const totalPagesStr = await prompt(chalk.cyan(`  Total pages (${book.totalPages}): `));
+  const currentPageStr = await prompt(chalk.cyan(`  Current page (${book.currentPage}): `));
+
+  const totalPages = totalPagesStr ? parseInt(totalPagesStr) : book.totalPages;
+  const currentPage = currentPageStr ? parseInt(currentPageStr) : book.currentPage;
+
+  if (isNaN(totalPages) || isNaN(currentPage)) {
+    console.log(chalk.red('  ✗ Invalid page number.'));
+    process.exit(1);
+  }
+
+  if (currentPage > totalPages) {
+    console.log(chalk.red('  ✗ Current page cannot exceed total pages.'));
+    process.exit(1);
+  }
+
+  book.title = title || book.title;
+  book.author = author || book.author;
+  book.totalPages = totalPages;
+  book.currentPage = currentPage;
+
+  if (currentPage >= totalPages && !book.finishedAt) {
+    book.finishedAt = new Date().toISOString();
+  } else if (currentPage < totalPages) {
+    delete book.finishedAt;
+  }
+
+  saveStore(store);
+  console.log(chalk.green(`\n  ✓ Updated "${book.title}"!`));
+  printBookCard(book, store.sessions);
+}
+
 function showHelp() {
   header();
   console.log(chalk.bold('  Commands:\n'));
   const cmds = [
     ['readr add',    'Add a new book'],
+    ['readr edit',   'Edit a book\'s details'],
     ['readr start',  'Start a reading session'],
     ['readr pause',  'Pause or resume current session'],
     ['readr stop',   'End session & log pages read'],
@@ -238,6 +298,7 @@ function showHelp() {
 (async () => {
   switch (command) {
     case 'add':    await addBook(); break;
+    case 'edit':   await editBook(); break;
     case 'start':  await startSession(); break;
     case 'pause':  pauseSession(); break;
     case 'stop':   await stopSession(); break;
