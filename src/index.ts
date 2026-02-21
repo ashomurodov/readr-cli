@@ -15,6 +15,56 @@ function prompt(question: string): Promise<string> {
   });
 }
 
+async function promptWithDefault(label: string, defaultValue: string): Promise<string> {
+  const display = defaultValue ? ` (${defaultValue})` : '';
+  const input = await prompt(chalk.cyan(`  ${label}${display}: `));
+  return input || defaultValue;
+}
+
+async function select(message: string, options: string[]): Promise<number> {
+  return new Promise((resolve) => {
+    let cursor = 0;
+
+    function render(first = false) {
+      if (!first) {
+        process.stdout.write(`\x1b[${options.length + 1}A`);
+      }
+      process.stdout.write(`\r\x1b[2K  ${chalk.cyan(message)}\n`);
+      for (let i = 0; i < options.length; i++) {
+        const line = i === cursor
+          ? `  ${chalk.green('❯')} ${chalk.bold(options[i])}`
+          : `    ${chalk.gray(options[i])}`;
+        process.stdout.write(`\r\x1b[2K${line}\n`);
+      }
+    }
+
+    render(true);
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+
+    function onData(key: string) {
+      if (key === '\x1b[A') {
+        cursor = (cursor - 1 + options.length) % options.length;
+        render();
+      } else if (key === '\x1b[B') {
+        cursor = (cursor + 1) % options.length;
+        render();
+      } else if (key === ' ' || key === '\r' || key === '\n') {
+        process.stdin.removeListener('data', onData);
+        process.stdin.setRawMode(false);
+        process.stdin.pause();
+        process.stdout.write('\n');
+        resolve(cursor);
+      } else if (key === '\x03') {
+        process.exit(0);
+      }
+    }
+
+    process.stdin.on('data', onData);
+  });
+}
+
 function header() {
   console.log('');
   console.log(chalk.bold.magenta('  📚 Reading Tracker'));
@@ -23,32 +73,50 @@ function header() {
 
 async function addBook() {
   header();
-  const title = await prompt(chalk.cyan('  Book title: '));
-  const author = await prompt(chalk.cyan('  Author: '));
-  const totalPagesStr = await prompt(chalk.cyan('  Total pages: '));
-  const currentPageStr = await prompt(chalk.cyan('  Current page (0 if new): '));
+  let title = '';
+  let author = '';
+  let totalPagesStr = '';
+  let currentPageStr = '0';
 
-  const totalPages = parseInt(totalPagesStr);
-  const currentPage = parseInt(currentPageStr) || 0;
+  while (true) {
+    console.log('');
+    title = await promptWithDefault('Book title', title);
+    author = await promptWithDefault('Author', author);
+    totalPagesStr = await promptWithDefault('Total pages', totalPagesStr);
+    currentPageStr = await promptWithDefault('Current page', currentPageStr);
 
-  if (!title || isNaN(totalPages)) {
-    console.log(chalk.red('  ✗ Invalid input.'));
-    process.exit(1);
+    const totalPages = parseInt(totalPagesStr);
+    const currentPage = parseInt(currentPageStr) || 0;
+
+    if (!title || isNaN(totalPages)) {
+      console.log(chalk.red('\n  ✗ Title and total pages are required.'));
+      continue;
+    }
+    if (currentPage > totalPages) {
+      console.log(chalk.red('\n  ✗ Current page cannot exceed total pages.'));
+      continue;
+    }
+
+    console.log('');
+    const action = await select('Save this book?', ['Save', 'Cancel']);
+    if (action === 0) {
+      const store = loadStore();
+      const book: Book = {
+        id: generateId(),
+        title,
+        author,
+        totalPages,
+        currentPage,
+        addedAt: new Date().toISOString(),
+      };
+      store.books.push(book);
+      saveStore(store);
+      console.log(chalk.green(`\n  ✓ Added "${title}"!`));
+      printBookCard(book, []);
+      return;
+    }
+    console.log('');
   }
-
-  const store = loadStore();
-  const book: Book = {
-    id: generateId(),
-    title,
-    author,
-    totalPages,
-    currentPage,
-    addedAt: new Date().toISOString(),
-  };
-  store.books.push(book);
-  saveStore(store);
-  console.log(chalk.green(`\n  ✓ Added "${title}"!`));
-  printBookCard(book, []);
 }
 
 async function startSession() {
@@ -70,19 +138,9 @@ async function startSession() {
   }
 
   header();
-  console.log(chalk.bold('  Your books:\n'));
-  store.books.forEach((b, i) => {
-    console.log(`  ${chalk.bold.cyan(i + 1 + '.')} ${b.title} ${chalk.gray(`— page ${b.currentPage}/${b.totalPages}`)}`);
-  });
-
-  const choiceStr = await prompt(chalk.cyan('\n  Pick a book (number): '));
-  const choice = parseInt(choiceStr) - 1;
+  const bookOptions = store.books.map((b) => `${b.title}  — page ${b.currentPage}/${b.totalPages}`);
+  const choice = await select('Pick a book to start reading:', bookOptions);
   const book = store.books[choice];
-
-  if (!book) {
-    console.log(chalk.red('  ✗ Invalid choice.'));
-    process.exit(1);
-  }
 
   const startPageStr = await prompt(
     chalk.cyan(`  Starting from page (enter for ${book.currentPage}): `)
@@ -226,54 +284,88 @@ async function editBook() {
   }
 
   header();
-  console.log(chalk.bold('  Your books:\n'));
-  store.books.forEach((b, i) => {
-    console.log(`  ${chalk.bold.cyan(i + 1 + '.')} ${b.title} ${chalk.gray(`— page ${b.currentPage}/${b.totalPages}`)}`);
-  });
-
-  const choiceStr = await prompt(chalk.cyan('\n  Pick a book to edit (number): '));
-  const choice = parseInt(choiceStr) - 1;
+  const bookOptions = store.books.map((b) => `${b.title}  — page ${b.currentPage}/${b.totalPages}`);
+  const choice = await select('Pick a book to edit:', bookOptions);
   const book = store.books[choice];
 
-  if (!book) {
-    console.log(chalk.red('  ✗ Invalid choice.'));
-    process.exit(1);
+  let title = book.title;
+  let author = book.author;
+  let totalPagesStr = String(book.totalPages);
+  let currentPageStr = String(book.currentPage);
+
+  while (true) {
+    console.log(chalk.gray('\n  Press Enter to keep the shown value.\n'));
+    title = await promptWithDefault('Title', title);
+    author = await promptWithDefault('Author', author);
+    totalPagesStr = await promptWithDefault('Total pages', totalPagesStr);
+    currentPageStr = await promptWithDefault('Current page', currentPageStr);
+
+    const totalPages = parseInt(totalPagesStr);
+    const currentPage = parseInt(currentPageStr);
+
+    if (isNaN(totalPages) || isNaN(currentPage)) {
+      console.log(chalk.red('\n  ✗ Invalid page number.'));
+      continue;
+    }
+    if (currentPage > totalPages) {
+      console.log(chalk.red('\n  ✗ Current page cannot exceed total pages.'));
+      continue;
+    }
+
+    console.log('');
+    const action = await select('Save changes?', ['Save', 'Cancel']);
+    if (action === 0) {
+      book.title = title;
+      book.author = author;
+      book.totalPages = totalPages;
+      book.currentPage = currentPage;
+      if (currentPage >= totalPages && !book.finishedAt) {
+        book.finishedAt = new Date().toISOString();
+      } else if (currentPage < totalPages) {
+        delete book.finishedAt;
+      }
+      saveStore(store);
+      console.log(chalk.green(`\n  ✓ Updated "${book.title}"!`));
+      printBookCard(book, store.sessions);
+      return;
+    }
+    console.log('');
+  }
+}
+
+async function removeBook() {
+  const store = loadStore();
+
+  if (store.books.length === 0) {
+    console.log(chalk.gray('\n  No books yet. Add one with: readr add\n'));
+    return;
   }
 
-  console.log(chalk.gray('\n  Press Enter to keep the current value.\n'));
+  header();
+  const bookOptions = store.books.map((b) => `${b.title}  — page ${b.currentPage}/${b.totalPages}`);
+  const bookIdx = await select('Pick a book to remove:', bookOptions);
+  const book = store.books[bookIdx];
 
-  const title = await prompt(chalk.cyan(`  Title (${book.title}): `));
-  const author = await prompt(chalk.cyan(`  Author (${book.author}): `));
-  const totalPagesStr = await prompt(chalk.cyan(`  Total pages (${book.totalPages}): `));
-  const currentPageStr = await prompt(chalk.cyan(`  Current page (${book.currentPage}): `));
+  console.log('');
+  console.log(chalk.yellow(`  ⚠  Remove "${chalk.bold(book.title)}"? This cannot be undone.`));
+  console.log('');
 
-  const totalPages = totalPagesStr ? parseInt(totalPagesStr) : book.totalPages;
-  const currentPage = currentPageStr ? parseInt(currentPageStr) : book.currentPage;
+  const confirmIdx = await select('Confirm your choice:', ['Cancel', 'Confirm']);
 
-  if (isNaN(totalPages) || isNaN(currentPage)) {
-    console.log(chalk.red('  ✗ Invalid page number.'));
-    process.exit(1);
+  if (confirmIdx === 0) {
+    console.log(chalk.gray('\n  Cancelled.\n'));
+    return;
   }
 
-  if (currentPage > totalPages) {
-    console.log(chalk.red('  ✗ Current page cannot exceed total pages.'));
-    process.exit(1);
-  }
-
-  book.title = title || book.title;
-  book.author = author || book.author;
-  book.totalPages = totalPages;
-  book.currentPage = currentPage;
-
-  if (currentPage >= totalPages && !book.finishedAt) {
-    book.finishedAt = new Date().toISOString();
-  } else if (currentPage < totalPages) {
-    delete book.finishedAt;
+  store.books = store.books.filter((b) => b.id !== book.id);
+  store.sessions = store.sessions.filter((s) => s.bookId !== book.id);
+  if (store.activeSessionId) {
+    const still = store.sessions.find((s) => s.id === store.activeSessionId);
+    if (!still) delete store.activeSessionId;
   }
 
   saveStore(store);
-  console.log(chalk.green(`\n  ✓ Updated "${book.title}"!`));
-  printBookCard(book, store.sessions);
+  console.log(chalk.red(`\n  ✓ Removed "${book.title}".\n`));
 }
 
 function showHelp() {
@@ -282,6 +374,7 @@ function showHelp() {
   const cmds = [
     ['readr add',    'Add a new book'],
     ['readr edit',   'Edit a book\'s details'],
+    ['readr remove', 'Remove a book'],
     ['readr start',  'Start a reading session'],
     ['readr pause',  'Pause or resume current session'],
     ['readr stop',   'End session & log pages read'],
@@ -299,6 +392,7 @@ function showHelp() {
   switch (command) {
     case 'add':    await addBook(); break;
     case 'edit':   await editBook(); break;
+    case 'remove': await removeBook(); break;
     case 'start':  await startSession(); break;
     case 'pause':  pauseSession(); break;
     case 'stop':   await stopSession(); break;

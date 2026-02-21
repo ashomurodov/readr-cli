@@ -12,6 +12,8 @@ npm install -g readr-cli
 
 ```bash
 readr add      # Add a new book
+readr edit     # Edit book details
+readr remove   # Remove a book
 readr start    # Start a reading session
 readr pause    # Pause or resume current session
 readr stop     # End session & log pages read
