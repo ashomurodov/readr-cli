@@ -69,7 +69,7 @@ async function select(message: string, options: string[]): Promise<number> {
 function header() {
   const currentVersion = getCurrentVersion();
   console.log('');
-  console.log(chalk.bold.magenta('  📚 Reading Tracker' + `${currentVersion}`));
+  console.log(chalk.bold.magenta('  📚 Reading Tracker  ' + `${currentVersion}`));
   console.log(chalk.gray('  ─────────────────────────────────'));
 }
 
