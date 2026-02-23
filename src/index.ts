@@ -4,7 +4,7 @@ import chalk from 'chalk';
 import { loadStore, saveStore, generateId } from './store.js';
 import { printBookCard, printSessionSummary, progressBar, formatDuration, getBookStats } from './display.js';
 import { Book, Session } from './types.js';
-import { getCurrentVersion, maybeRunUpdateCheck } from './update.js';
+import { formatVersionLabel, getCurrentVersion, maybeRunUpdateCheck } from './update.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -68,9 +68,10 @@ async function select(message: string, options: string[]): Promise<number> {
 
 function header() {
   const currentVersion = getCurrentVersion();
+  const versionLabel = formatVersionLabel(currentVersion);
   console.log('');
-  console.log(chalk.bold.magenta('  📚 Reading Tracker  ' + `${currentVersion}`));
-  console.log(chalk.gray('  ─────────────────────────────────'));
+  console.log(chalk.bold.magenta(`  Reading Tracker  ${versionLabel}`));
+  console.log(chalk.gray('  ---------------------------------'));
 }
 
 async function addBook() {
@@ -408,3 +409,5 @@ function showHelp() {
     default:       showHelp(); break;
   }
 })();
+
+

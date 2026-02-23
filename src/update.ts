@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import chalk from 'chalk';
 
 const PACKAGE_NAME = 'readr-cli';
@@ -56,15 +57,49 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-export function getCurrentVersion(): string | null {
+function normalizeVersion(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim().replace(/^v/i, '');
+  if (!trimmed) return null;
+  return /^\d+(\.\d+){0,2}([-.][0-9A-Za-z.-]+)?$/.test(trimmed) ? trimmed : null;
+}
+
+function readVersionFromPackageJson(pkgPath: string): string | null {
   try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    const pkgPath = path.resolve(here, '../package.json');
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as { version?: string };
-    return pkg.version ?? null;
+    return normalizeVersion(pkg.version);
   } catch {
     return null;
   }
+}
+
+export function getCurrentVersion(): string | null {
+  const envVersion = normalizeVersion(process.env.npm_package_version);
+  if (envVersion) return envVersion;
+
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidatePaths = [
+    path.resolve(here, '../package.json'),
+    path.resolve(here, '../../package.json'),
+  ];
+
+  for (const candidate of candidatePaths) {
+    const version = readVersionFromPackageJson(candidate);
+    if (version) return version;
+  }
+
+  try {
+    const require = createRequire(import.meta.url);
+    const resolvedPkg = require.resolve(`${PACKAGE_NAME}/package.json`);
+    return readVersionFromPackageJson(resolvedPkg);
+  } catch {
+    return null;
+  }
+}
+
+export function formatVersionLabel(version: string | null | undefined): string {
+  const normalized = normalizeVersion(version);
+  return normalized ? `v${normalized}` : 'v?';
 }
 
 function getLatestVersionFromNpm(): string | null {
@@ -76,7 +111,7 @@ function getLatestVersionFromNpm(): string | null {
     });
     if (result.status !== 0) return null;
     const version = result.stdout.trim();
-    return version || null;
+    return normalizeVersion(version);
   } catch {
     return null;
   }
@@ -140,4 +175,3 @@ export function maybeRunUpdateCheck(): void {
   console.log(chalk.yellow(`\n  Update available: readr-cli v${latestVersion} (current v${currentVersion}).`));
   console.log(chalk.gray(`  Please run: npm install -g ${PACKAGE_NAME}\n`));
 }
-
