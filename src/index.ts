@@ -256,10 +256,12 @@ function showStats() {
   const totalPages = completedSessions.reduce((acc, s) => {
     return acc + ((s.endPage ?? s.startPage) - s.startPage);
   }, 0);
+  const completedBooks = store.books.filter((b) => b.currentPage >= b.totalPages).length;
 
   console.log(`  ${chalk.yellow('Total reading time:')}  ${chalk.bold(formatDuration(totalMs))}`);
   console.log(`  ${chalk.yellow('Total pages read:')}   ${chalk.bold(totalPages)}`);
   console.log(`  ${chalk.yellow('Total sessions:')}     ${chalk.bold(completedSessions.length)}`);
+  console.log(`  ${chalk.yellow('Books completed:')}    ${chalk.bold(`${completedBooks}/${store.books.length}`)}`);
   console.log('');
 
   for (const book of store.books) {
