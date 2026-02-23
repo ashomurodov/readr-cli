@@ -1,6 +1,6 @@
 {
   "name": "readr-cli",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "description": "Beautiful CLI to track reading sessions, speed, and book completion ETA",
   "type": "module",
   "bin": {
