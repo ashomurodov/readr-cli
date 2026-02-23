@@ -4,6 +4,7 @@ import chalk from 'chalk';
 import { loadStore, saveStore, generateId } from './store.js';
 import { printBookCard, printSessionSummary, progressBar, formatDuration, getBookStats } from './display.js';
 import { Book, Session } from './types.js';
+import { maybeRunUpdateCheck } from './update.js';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -391,6 +392,8 @@ function showHelp() {
 }
 
 (async () => {
+  maybeRunUpdateCheck();
+
   switch (command) {
     case 'add':    await addBook(); break;
     case 'edit':   await editBook(); break;
