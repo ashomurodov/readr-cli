@@ -56,7 +56,7 @@ function compareVersions(a: string, b: string): number {
   return 0;
 }
 
-function getCurrentVersion(): string | null {
+export function getCurrentVersion(): string | null {
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const pkgPath = path.resolve(here, '../package.json');
